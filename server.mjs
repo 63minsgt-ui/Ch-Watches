@@ -62,4 +62,4 @@ const server=http.createServer(async(req,res)=>{try{let url=new URL(req.url,'htt
  if(req.method==='GET'&&(!p.startsWith('/api/')))return staticFile(p,res);
  send(res,404,{error:'Not found'});
  }catch(e){send(res,e.message==='Request too large'?413:400,{error:e.message||'Request failed'})}});
-server.listen(port,process.env.HOST||'127.0.0.1',()=>console.log(`CH Watches running on http://localhost:${port}`));
+server.listen(port, '0.0.0.0',()=>console.log(`CH Watches running on http://localhost:${port}`));
