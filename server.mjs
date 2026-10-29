@@ -4,6 +4,22 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
+import mongoose from 'mongoose';
+
+// Connect to MongoDB Atlas using the environment variable from Render
+const MONGODB_URI = process.env.MONGODB_URI;
+
+mongoose.connect(MONGODB_URI)
+    .then(() => console.log('Successfully connected to MongoDB!'))
+    .catch((err) => console.error('MongoDB connection error:', err));
+const productSchema = new mongoose.Schema({
+    name: String,
+    price: Number,
+    description: String,
+    imageUrl: String
+});
+
+const Product = mongoose.model('Product', productSchema);
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=path.join(root,'data'), databaseFile=path.join(dataDir,'ch-watches.sqlite');
@@ -25,7 +41,7 @@ function auth(req){let id=cookie(req),expiry=id&&sessions.get(id);if(expiry&&exp
 async function body(req){let chunks=[],size=0;for await(const c of req){size+=c.length;if(size>32_000_000)throw Error('Request too large');chunks.push(c)}return JSON.parse(Buffer.concat(chunks).toString()||'{}')}
 function staticFile(pathname,res){const requested=pathname==='/'?'index.html':decodeURIComponent(pathname).replace(/^\/+/,''),allowed=new Set(['index.html','styles.css','app.js','admin.html','admin.js','ch-time-logo.jpg']);if(!allowed.has(requested)){res.writeHead(404);return res.end('Not found')}const file=path.join(root,requested);if(!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);return res.end('Not found')}let ext=path.extname(file),types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.jpg':'image/jpeg'};res.writeHead(200,{'content-type':types[ext]||'application/octet-stream','x-content-type-options':'nosniff','content-security-policy':"default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'"});fs.createReadStream(file).pipe(res)}
 const server=http.createServer(async(req,res)=>{try{let url=new URL(req.url,'http://localhost'),p=url.pathname;
- if(p==='/api/store'&&req.method==='GET'){let d=read();return send(res,200,{settings:d.settings,products:d.products.filter(x=>x.published!==false)})}
+ if (p === '/api/store' && req.method === 'GET') { let d = read(); const dbProducts = await Product.find(); return send(res, 200, { settings: d.settings, products: dbProducts.filter(x => x.published !== false) }) }
  if(p==='/api/orders'&&req.method==='POST'){
    const ip=req.socket.remoteAddress||'unknown',attempt=orderAttempts.get(ip)||{count:0,at:Date.now()};if(Date.now()-attempt.at>600000){attempt.count=0;attempt.at=Date.now()}if(attempt.count>=20)return send(res,429,{error:'Too many order requests. Please contact the store directly.'});attempt.count++;orderAttempts.set(ip,attempt);
    const input=await body(req),c=input.customer||{};
@@ -46,4 +62,4 @@ const server=http.createServer(async(req,res)=>{try{let url=new URL(req.url,'htt
  if(req.method==='GET'&&(!p.startsWith('/api/')))return staticFile(p,res);
  send(res,404,{error:'Not found'});
  }catch(e){send(res,e.message==='Request too large'?413:400,{error:e.message||'Request failed'})}});
-server.listen(port,'0.0.0.0',()=>console.log(`CH Watches running on http://localhost:${port}`));
+server.listen(port,process.env.HOST||'127.0.0.1',()=>console.log(`CH Watches running on http://localhost:${port}`));
