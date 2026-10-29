@@ -128,6 +128,6 @@ $('#settingsForm').onsubmit = async (event) => {
   try { await saveStore(); $('#settingsMessage').textContent = 'Settings saved.'; }
   catch (error) { $('#settingsMessage').textContent = error.message; }
 };
-async function saveStore() { await api('/api/admin', { method: 'PUT', body: JSON.stringify(store) }); }
+async function saveStore() { await api('/api/admin', { method: 'PUT', credentials:'include', body: JSON.stringify(store) }); }
 
-api('/api/admin').then(showDashboard).catch(() => {});
+api('/api/admin', { credentials: 'include' }).then(showDashboard).catch(() => {});
