@@ -7,5 +7,7 @@
   "scripts": {
     "start": "node server.mjs"
   },
-  "dependencies": {}
+  "dependencies": {
+    "mongoose": "^8.0.0"
+  }
 }
