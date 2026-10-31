@@ -6,12 +6,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import mongoose from 'mongoose';
 
-// Connect to MongoDB Atlas using the environment variable from Render
 const MONGODB_URI = process.env.MONGODB_URI;
 
 mongoose.connect(MONGODB_URI)
     .then(() => console.log('Successfully connected to MongoDB!'))
     .catch((err) => console.error('MongoDB connection error:', err));
+
 const productSchema = new mongoose.Schema({
     name: String,
     price: Number,
@@ -44,7 +44,7 @@ function send(res, status, obj, headers={}) {
         'content-type': 'application/json', 
         'cache-control': 'no-store', 
         'x-content-type-options': 'nosniff',
-        'content-security-policy': "default-src 'self'; img-src 'self' data: blob: https://images.unsplash.com;",
+        'content-security-policy': "default-src 'self' * data: blob: https:; img-src 'self' * data: blob: https:;",
         ...headers 
     });
     res.end(JSON.stringify(obj));
@@ -60,7 +60,7 @@ function cookie(req) {
 }
 function auth(req){let id=cookie(req),expiry=id&&sessions.get(id);if(expiry&&expiry>Date.now())return id;if(id)sessions.delete(id);return null}
 async function body(req){let chunks=[],size=0;for await(const c of req){size+=c.length;if(size>32_000_000)throw Error('Request too large');chunks.push(c)}return JSON.parse(Buffer.concat(chunks).toString()||'{}')}
-function staticFile(pathname,res){const requested=pathname==='/'?'index.html':decodeURIComponent(pathname).replace(/^\/+/,''),allowed=new Set(['index.html','styles.css','app.js','admin.html','admin.js','ch-time-logo.jpg']);if(!allowed.has(requested)){res.writeHead(404);return res.end('Not found')}const file=path.join(root,requested);if(!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);return res.end('Not found')}let ext=path.extname(file),types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.jpg':'image/jpeg'};res.writeHead(200,{'content-type':types[ext]||'application/octet-stream','x-content-type-options':'nosniff','content-security-policy':"default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob: https://images.unsplash.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'"});fs.createReadStream(file).pipe(res)}
+function staticFile(pathname,res){const requested=pathname==='/'?'index.html':decodeURIComponent(pathname).replace(/^\/+/,''),allowed=new Set(['index.html','styles.css','app.js','admin.html','admin.js','ch-time-logo.jpg']);if(!allowed.has(requested)){res.writeHead(404);return res.end('Not found')}const file=path.join(root,requested);if(!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);return res.end('Not found')}let ext=path.extname(file),types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.jpg':'image/jpeg'};res.writeHead(200,{'content-type':types[ext]||'application/octet-stream','x-content-type-options':'nosniff','content-security-policy':"default-src 'self' * data: blob: https:; img-src 'self' * data: blob: https:; style-src 'self' 'unsafe-inline' *; script-src 'self' 'unsafe-inline' *; connect-src 'self' *; base-uri 'self'; frame-ancestors 'none'"});fs.createReadStream(file).pipe(res)}
 const server=http.createServer(async(req,res)=>{try{let url=new URL(req.url,'http://localhost'),p=url.pathname;
  if (p === '/api/store' && req.method === 'GET') { let d = read(); const dbProducts = await Product.find(); return send(res, 200, { settings: d.settings, products: dbProducts.filter(x => x.published !== false) }) }
  if(p==='/api/orders'&&req.method==='POST'){
@@ -78,12 +78,11 @@ const server=http.createServer(async(req,res)=>{try{let url=new URL(req.url,'htt
  if(p==='/api/admin/login'&&req.method==='POST'){let ip=req.socket.remoteAddress||'unknown',a=attempts.get(ip)||{n:0,at:Date.now()};if(Date.now()-a.at>600000)a={n:0,at:Date.now()};if(a.n>=8)return send(res,429,{error:'Too many attempts. Try again later.'});let b=await body(req);let candidate=crypto.createHash('sha256').update(String(b.password||'')).digest(),expected=crypto.createHash('sha256').update(password).digest();if(!crypto.timingSafeEqual(candidate,expected)){a.n++;attempts.set(ip,a);return send(res,401,{error:'Incorrect password.'})}attempts.delete(ip);let id=crypto.randomBytes(32).toString('hex');sessions.set(id,Date.now()+8*60*60*1000);return send(res,200,{ok:true},{'set-cookie':`cz_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${process.env.NODE_ENV==='production'?'; Secure':''}`})}
  if(p==='/api/admin/logout'&&req.method==='POST'){let id=cookie(req);if(id)sessions.delete(id);return send(res,200,{ok:true},{'set-cookie':'cz_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'})}
  if(p.startsWith('/api/admin')){if(!auth(req))return send(res,401,{error:'Sign in required.'});if(p==='/api/admin'&&req.method==='GET')return send(res,200,read());if(p==='/api/admin'&&req.method==='PUT'){let d=await body(req);if(!d||!Array.isArray(d.products)||!d.settings)return send(res,400,{error:'Invalid store data.'});d.orders=read().orders;write(d);
-     console.log('Incoming admin products data:', JSON.stringify(d.products, null, 2));
      try{
          await Product.deleteMany({});
          if(d.products.length>0){
              await Product.insertMany(d.products.map(prod=> {
-                 const resolvedImage = prod.imageUrl || prod.image || prod.img || prod.photo || prod.picture || prod.url || '';
+                 const resolvedImage = prod.imageUrl || prod.image || prod.img || prod.photo || prod.picture || prod.url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30';
                  return {
                      name: prod.name,
                      price: Number(prod.price) || 0,
