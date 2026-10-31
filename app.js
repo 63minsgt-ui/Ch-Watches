@@ -25,9 +25,12 @@ function money(value) {
 function deliveryFee(method = $('#deliveryMethod')?.value || '') { return method.startsWith('Delivery') ? Number(db.settings.deliveryFee) || 0 : 0; }
 function cartSubtotal() { return cart.reduce((total, row) => { const p = db.products.find((item) => item.id === row.id); return total + (p ? Number(p.price) * row.qty : 0); }, 0); }
 function updateCheckoutTotal() { if ($('#checkoutSubtotal')) $('#checkoutSubtotal').textContent = money(cartSubtotal() + deliveryFee()); }
+
+// Custom watch placeholder rendered with your brand logo inside the watch face
 function watchArt() {
-  return '<div class="image-placeholder"><div class="mini-watch"><div class="mini-strap"></div><div class="mini-face"></div></div></div>';
+  return '<div class="image-placeholder"><div class="mini-watch"><div class="mini-strap"></div><div class="mini-face"><img src="ch-time-logo.jpg" alt="CH Watches" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"></div></div></div>';
 }
+
 function getProductImageUrl(product) {
   if (!product) return '';
   if (Array.isArray(product.images) && product.images[0]) return product.images[0];
@@ -84,13 +87,11 @@ function renderProducts() {
   $('#empty').classList.toggle('hidden', products.length > 0);
   $('#loadMore').classList.toggle('hidden', products.length <= limit);
 
-  // Re-attach card click to open details
   $$('.product-card').forEach((el) => { 
     el.onclick = (e) => { 
       if (!e.target.closest('[data-add]')) openProduct(el.dataset.id); 
     }; 
   });
-  // Re-attach quick add buttons
   $$('[data-add]').forEach((button) => { 
     button.onclick = (e) => { 
       e.stopPropagation(); 
@@ -118,7 +119,6 @@ function openProduct(id, updateUrl = true) {
   $('#productModal').classList.remove('hidden');
   $('#overlay').classList.remove('hidden');
   
-  // Attach modal action listeners
   $('#detailAdd')?.addEventListener('click', () => { add(id, Number($('#detailQty').value), $('#detailColor').value); closeModals(); });
   $('#detailWa')?.addEventListener('click', () => goWhatsApp(productMessage(product, Number($('#detailQty').value), $('#detailColor').value)));
   
@@ -138,7 +138,7 @@ function add(id, quantity = 1, color) {
   if (color === undefined) color = product.colors?.[0] || '';
   const row = cart.find((x) => x.id === id && (x.color || '') === color);
   const currentQty = row ? row.qty : 0;
-  const maxStock = product.stock > 0 ? product.stock : 99; // Fallback if stock wasn't set
+  const maxStock = product.stock > 0 ? product.stock : 99;
   
   if (row) {
     row.qty = Math.min(maxStock, currentQty + quantity);
@@ -147,7 +147,7 @@ function add(id, quantity = 1, color) {
   }
   save(); 
   renderCart();
-  toggleCart(true); // Automatically open cart drawer so user sees their item added
+  toggleCart(true);
 }
 
 function changeQty(id, delta, color = '') {
