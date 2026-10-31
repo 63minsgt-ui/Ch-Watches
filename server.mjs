@@ -45,6 +45,15 @@ function send(res, status, obj, headers={}) {
     });
     res.end(JSON.stringify(obj));
 }
+function cookie(req) {
+    const list = {};
+    const rc = req.headers.cookie;
+    rc && rc.split(';').forEach(cookie => {
+        const parts = cookie.split('=');
+        list[parts.shift().trim()] = decodeURI(parts.join('='));
+    });
+    return list['cz_session'];
+}
 function auth(req){let id=cookie(req),expiry=id&&sessions.get(id);if(expiry&&expiry>Date.now())return id;if(id)sessions.delete(id);return null}
 async function body(req){let chunks=[],size=0;for await(const c of req){size+=c.length;if(size>32_000_000)throw Error('Request too large');chunks.push(c)}return JSON.parse(Buffer.concat(chunks).toString()||'{}')}
 function staticFile(pathname,res){const requested=pathname==='/'?'index.html':decodeURIComponent(pathname).replace(/^\/+/,''),allowed=new Set(['index.html','styles.css','app.js','admin.html','admin.js','ch-time-logo.jpg']);if(!allowed.has(requested)){res.writeHead(404);return res.end('Not found')}const file=path.join(root,requested);if(!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);return res.end('Not found')}let ext=path.extname(file),types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.jpg':'image/jpeg'};res.writeHead(200,{'content-type':types[ext]||'application/octet-stream','x-content-type-options':'nosniff','content-security-policy':"default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob: https://images.unsplash.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'"});fs.createReadStream(file).pipe(res)}
