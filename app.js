@@ -1,4 +1,4 @@
-﻿const STORE_KEY = 'ch-watches-store-v1';
+const STORE_KEY = 'ch-watches-store-v1';
 const CART_KEY = 'ch-watches-cart-v1';
 const defaults = { settings: { name: 'CH Watches', currency: 'USD', whatsapp: '96181148792', deliveryFee: 0 }, products: [] };
 let db = read(STORE_KEY, defaults);
@@ -28,8 +28,20 @@ function updateCheckoutTotal() { if ($('#checkoutSubtotal')) $('#checkoutSubtota
 function watchArt() {
   return '<div class="image-placeholder"><div class="mini-watch"><div class="mini-strap"></div><div class="mini-face"></div></div></div>';
 }
+function getProductImageUrl(product) {
+  if (!product) return '';
+  if (Array.isArray(product.images) && product.images[0]) return product.images[0];
+  return product.imageUrl || product.image || product.img || product.photo || product.picture || product.url || '';
+}
+function getAllProductImages(product) {
+  if (!product) return [];
+  if (Array.isArray(product.images) && product.images.length > 0) return product.images;
+  const single = getProductImageUrl(product);
+  return single ? [single] : [];
+}
 function image(product) {
-  return product.images?.[0] ? `<img src="${product.images[0]}" alt="${esc(product.name)}">` : watchArt();
+  const url = getProductImageUrl(product);
+  return url ? `<img src="${esc(url)}" alt="${esc(product.name)}">` : watchArt();
 }
 function populateCatalogFilters() {
   for (const [selector, values] of [['#brandFilter', db.products.map((p) => p.brand).filter(Boolean)], ['#colorFilter', db.products.flatMap((p) => p.colors || [])]]) {
@@ -80,9 +92,10 @@ function openProduct(id, updateUrl = true) {
   if (!product) return;
   if (updateUrl) history.pushState({}, '', `#product-${encodeURIComponent(id)}`);
   const specs = product.specs || {};
-  const thumbnails = (product.images || []).length > 1 ? `<div class="detail-thumbnails">${product.images.map((src, i) => `<button type="button" data-thumb="${i}" aria-label="View image ${i + 1}"><img src="${src}" alt=""></button>`).join('')}</div>` : '';
+  const allImages = getAllProductImages(product);
+  const thumbnails = allImages.length > 1 ? `<div class="detail-thumbnails">${allImages.map((src, i) => `<button type="button" data-thumb="${i}" aria-label="View image ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join('')}</div>` : '';
   $('#productDetail').innerHTML = `<div class="product-detail"><div><div class="detail-image">${image(product)}</div>${thumbnails}</div><div class="detail-copy">
-    <p class="eyebrow">${esc(product.brand || 'WATCH')} ${product.model ? `- ${esc(product.model)}` : ''}</p><h2>${esc(product.name)}</h2><b class="price">${money(product.price)}${product.previousPrice && product.previousPrice > product.price ? ` <s class="old-price">${money(product.previousPrice)}</s>` : ''}</b>
+    <p class="eyebrow">${esc(product.brand || 'WATCH')} ${product.model ? `- ${esc(product.model)}` : ''}</p><h2>${esc(product.name)}</h2><b class="price">${money(p.price)}${product.previousPrice && product.previousPrice > product.price ? ` <s class="old-price">${money(product.previousPrice)}</s>` : ''}</b>
     <p>${esc(product.description || 'Contact us to confirm product details and availability.')}</p>
     <p>${product.stock > 0 ? `${product.stock} available in stock` : 'Currently unavailable'}${product.colors?.length ? ` - ${esc(product.colors.join(', '))}` : ''}</p>
     <dl>${Object.entries(specs).filter(([, v]) => v).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
@@ -94,7 +107,7 @@ function openProduct(id, updateUrl = true) {
   $('#overlay').classList.remove('hidden');
   $('#detailAdd')?.addEventListener('click', () => { add(id, Number($('#detailQty').value), $('#detailColor').value); closeModals(); });
   $('#detailWa')?.addEventListener('click', () => goWhatsApp(productMessage(product, Number($('#detailQty').value), $('#detailColor').value)));
-  $$('[data-thumb]').forEach((button) => { button.onclick = () => { $('.detail-image img').src = product.images[Number(button.dataset.thumb)]; }; });
+  $$('[data-thumb]').forEach((button) => { button.onclick = () => { const imgEl = $('.detail-image img'); if (imgEl) imgEl.src = allImages[Number(button.dataset.thumb)] || ''; }; });
   const img = $('.detail-image img');
   if (img) img.onclick = () => img.classList.toggle('zoomed');
 }
@@ -125,7 +138,8 @@ function renderCart() {
     const p = db.products.find((item) => item.id === row.id);
     if (!p) return '';
     subtotal += p.price * row.qty;
-    return `<div class="cart-row"><div class="cart-thumb">${p.images?.[0] ? `<img src="${p.images[0]}" alt="" style="width:100%;height:100%;object-fit:cover">` : watchArt()}</div>
+    const cartImgUrl = getProductImageUrl(p);
+    return `<div class="cart-row"><div class="cart-thumb">${cartImgUrl ? `<img src="${esc(cartImgUrl)}" alt="" style="width:100%;height:100%;object-fit:cover">` : watchArt()}</div>
       <div><h3>${esc(p.name)}</h3><p>${money(p.price)}${p.model ? ` - ${esc(p.model)}` : ''}${row.color ? ` - ${esc(row.color)}` : ''}</p><div class="qty"><button data-qty="${p.id}" data-color="${esc(row.color || '')}" data-delta="-1">-</button><span>${row.qty}</span><button data-qty="${p.id}" data-color="${esc(row.color || '')}" data-delta="1">+</button></div></div>
       <button class="remove" data-remove="${p.id}" data-color="${esc(row.color || '')}">Remove</button></div>`;
   }).join('') || '<p class="muted">Your cart is waiting for a good watch.</p>';
@@ -231,4 +245,3 @@ fetch('/api/store').then((r) => r.ok ? r.json() : null).then((remote) => {
   db = remote; applySettings(); populateCatalogFilters(); renderProducts(); renderCart();
   if (location.hash.startsWith('#product-')) openProduct(decodeURIComponent(location.hash.slice(9)), false);
 }).catch(() => {});
-
