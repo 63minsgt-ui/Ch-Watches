@@ -26,7 +26,7 @@ function deliveryFee(method = $('#deliveryMethod')?.value || '') { return method
 function cartSubtotal() { return cart.reduce((total, row) => { const p = db.products.find((item) => item.id === row.id); return total + (p ? Number(p.price) * row.qty : 0); }, 0); }
 function updateCheckoutTotal() { if ($('#checkoutSubtotal')) $('#checkoutSubtotal').textContent = money(cartSubtotal() + deliveryFee()); }
 
-// Custom watch placeholder rendered with your brand logo inside the watch face
+// Watch placeholder with your logo inside the watch face
 function watchArt() {
   return '<div class="image-placeholder"><div class="mini-watch"><div class="mini-strap"></div><div class="mini-face"><img src="ch-time-logo.jpg" alt="CH Watches" style="width:100%;height:100%;object-fit:cover;border-radius:50%;"></div></div></div>';
 }
