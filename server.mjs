@@ -78,19 +78,23 @@ const server=http.createServer(async(req,res)=>{try{let url=new URL(req.url,'htt
  if(p==='/api/admin/login'&&req.method==='POST'){let ip=req.socket.remoteAddress||'unknown',a=attempts.get(ip)||{n:0,at:Date.now()};if(Date.now()-a.at>600000)a={n:0,at:Date.now()};if(a.n>=8)return send(res,429,{error:'Too many attempts. Try again later.'});let b=await body(req);let candidate=crypto.createHash('sha256').update(String(b.password||'')).digest(),expected=crypto.createHash('sha256').update(password).digest();if(!crypto.timingSafeEqual(candidate,expected)){a.n++;attempts.set(ip,a);return send(res,401,{error:'Incorrect password.'})}attempts.delete(ip);let id=crypto.randomBytes(32).toString('hex');sessions.set(id,Date.now()+8*60*60*1000);return send(res,200,{ok:true},{'set-cookie':`cz_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${process.env.NODE_ENV==='production'?'; Secure':''}`})}
  if(p==='/api/admin/logout'&&req.method==='POST'){let id=cookie(req);if(id)sessions.delete(id);return send(res,200,{ok:true},{'set-cookie':'cz_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'})}
  if(p.startsWith('/api/admin')){if(!auth(req))return send(res,401,{error:'Sign in required.'});if(p==='/api/admin'&&req.method==='GET')return send(res,200,read());if(p==='/api/admin'&&req.method==='PUT'){let d=await body(req);if(!d||!Array.isArray(d.products)||!d.settings)return send(res,400,{error:'Invalid store data.'});d.orders=read().orders;write(d);
+     console.log('Incoming admin products data:', JSON.stringify(d.products, null, 2));
      try{
          await Product.deleteMany({});
          if(d.products.length>0){
-             await Product.insertMany(d.products.map(prod=>({
-                 name: prod.name,
-                 price: Number(prod.price) || 0,
-                 description: prod.description || '',
-                 imageUrl: prod.imageUrl || prod.image || '',
-                 image: prod.imageUrl || prod.image || '',
-                 model: prod.model || '',
-                 stock: Number(prod.stock) || 0,
-                 published: prod.published !== false
-             })));
+             await Product.insertMany(d.products.map(prod=> {
+                 const resolvedImage = prod.imageUrl || prod.image || prod.img || prod.photo || prod.picture || prod.url || '';
+                 return {
+                     name: prod.name,
+                     price: Number(prod.price) || 0,
+                     description: prod.description || '',
+                     imageUrl: resolvedImage,
+                     image: resolvedImage,
+                     model: prod.model || '',
+                     stock: Number(prod.stock) || 0,
+                     published: prod.published !== false
+                 };
+             }));
          }
      }catch(err){console.error('Failed to sync products to MongoDB:',err)}
      return send(res,200,{ok:true})}
