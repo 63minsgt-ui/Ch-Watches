@@ -105,23 +105,30 @@ $('#productSearch').oninput = renderProducts;
 $('#orderFilter').onchange = renderOrders;
 $('#orderSearch').oninput = renderOrders;
 function fileData(file) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file); }); }
+
 $('#productForm').onsubmit = async (event) => {
   event.preventDefault(); const form = event.currentTarget; const values = Object.fromEntries(new FormData(form)); const id = values.id || crypto.randomUUID();
   try {
     let images = editing?.images || [];
     const files = [...form.elements.photos.files];
-    if (files.length) images = await Promise.all(files.map(fileData));
+    if (files.length) {
+      images = await Promise.all(files.map(fileData));
+    }
+    const primaryImage = images[0] || editing?.imageUrl || editing?.image || '';
     const product = {
       id, name: values.name, brand: values.brand, model: values.model, price: Number(values.price), previousPrice: values.previousPrice ? Number(values.previousPrice) : null,
       stock: Number(values.stock) || 0, categories: values.categories.split(',').map((x) => x.trim()).filter(Boolean), colors: values.colors.split(',').map((x) => x.trim()).filter(Boolean),
       description: values.description, specs: { 'Case size': values.caseSize, 'Strap material': values.strapMaterial, 'Display type': values.displayType, 'Water resistance': values.waterResistance },
-      featured: form.elements.featured.checked, isNew: form.elements.isNew.checked, published: form.elements.published.checked, images, created: editing?.created || Date.now(),
+      featured: form.elements.featured.checked, isNew: form.elements.isNew.checked, published: form.elements.published.checked, 
+      images, imageUrl: primaryImage, image: primaryImage,
+      created: editing?.created || Date.now(),
     };
     const index = store.products.findIndex((p) => p.id === id);
     if (index < 0) store.products.push(product); else store.products[index] = product;
     await saveStore(); $('#productMessage').textContent = 'Product saved.'; form.reset(); editing = null; $('#formTitle').textContent = 'Add a watch'; renderAll();
   } catch (error) { $('#productMessage').textContent = error.message; }
 };
+
 $('#settingsForm').onsubmit = async (event) => {
   event.preventDefault(); const values = Object.fromEntries(new FormData(event.currentTarget));
   store.settings = { ...store.settings, ...values, deliveryFee: Number(values.deliveryFee) || 0 };
