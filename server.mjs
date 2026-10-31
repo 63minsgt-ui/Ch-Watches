@@ -4,26 +4,6 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
-import mongoose from 'mongoose';
-
-const MONGODB_URI = process.env.MONGODB_URI;
-
-mongoose.connect(MONGODB_URI)
-    .then(() => console.log('Successfully connected to MongoDB!'))
-    .catch((err) => console.error('MongoDB connection error:', err));
-
-const productSchema = new mongoose.Schema({
-    name: String,
-    price: Number,
-    description: String,
-    imageUrl: String,
-    image: String,
-    model: String,
-    stock: Number,
-    published: Boolean
-});
-
-const Product = mongoose.model('Product', productSchema);
 
 const root=path.dirname(fileURLToPath(import.meta.url));
 const dataDir=path.join(root,'data'), databaseFile=path.join(dataDir,'ch-watches.sqlite');
@@ -62,7 +42,10 @@ function auth(req){let id=cookie(req),expiry=id&&sessions.get(id);if(expiry&&exp
 async function body(req){let chunks=[],size=0;for await(const c of req){size+=c.length;if(size>32_000_000)throw Error('Request too large');chunks.push(c)}return JSON.parse(Buffer.concat(chunks).toString()||'{}')}
 function staticFile(pathname,res){const requested=pathname==='/'?'index.html':decodeURIComponent(pathname).replace(/^\/+/,''),allowed=new Set(['index.html','styles.css','app.js','admin.html','admin.js','ch-time-logo.jpg']);if(!allowed.has(requested)){res.writeHead(404);return res.end('Not found')}const file=path.join(root,requested);if(!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);return res.end('Not found')}let ext=path.extname(file),types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.jpg':'image/jpeg'};res.writeHead(200,{'content-type':types[ext]||'application/octet-stream','x-content-type-options':'nosniff','content-security-policy':"default-src 'self' * data: blob: https:; img-src 'self' * data: blob: https:; style-src 'self' 'unsafe-inline' *; script-src 'self' 'unsafe-inline' *; connect-src 'self' *; base-uri 'self'; frame-ancestors 'none'"});fs.createReadStream(file).pipe(res)}
 const server=http.createServer(async(req,res)=>{try{let url=new URL(req.url,'http://localhost'),p=url.pathname;
- if (p === '/api/store' && req.method === 'GET') { let d = read(); const dbProducts = await Product.find(); return send(res, 200, { settings: d.settings, products: dbProducts.filter(x => x.published !== false) }) }
+ 
+ // Reads directly from your local database like it did when it worked perfectly
+ if(p==='/api/store'&&req.method==='GET'){const d=read();return send(res,200,{settings:d.settings,products:d.products.filter(x=>x.published!==false)})}
+
  if(p==='/api/orders'&&req.method==='POST'){
    const ip=req.socket.remoteAddress||'unknown',attempt=orderAttempts.get(ip)||{count:0,at:Date.now()};if(Date.now()-attempt.at>600000){attempt.count=0;attempt.at=Date.now()}if(attempt.count>=20)return send(res,429,{error:'Too many order requests. Please contact the store directly.'});attempt.count++;orderAttempts.set(ip,attempt);
    const input=await body(req),c=input.customer||{};
@@ -77,26 +60,7 @@ const server=http.createServer(async(req,res)=>{try{let url=new URL(req.url,'htt
  }
  if(p==='/api/admin/login'&&req.method==='POST'){let ip=req.socket.remoteAddress||'unknown',a=attempts.get(ip)||{n:0,at:Date.now()};if(Date.now()-a.at>600000)a={n:0,at:Date.now()};if(a.n>=8)return send(res,429,{error:'Too many attempts. Try again later.'});let b=await body(req);let candidate=crypto.createHash('sha256').update(String(b.password||'')).digest(),expected=crypto.createHash('sha256').update(password).digest();if(!crypto.timingSafeEqual(candidate,expected)){a.n++;attempts.set(ip,a);return send(res,401,{error:'Incorrect password.'})}attempts.delete(ip);let id=crypto.randomBytes(32).toString('hex');sessions.set(id,Date.now()+8*60*60*1000);return send(res,200,{ok:true},{'set-cookie':`cz_session=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=28800${process.env.NODE_ENV==='production'?'; Secure':''}`})}
  if(p==='/api/admin/logout'&&req.method==='POST'){let id=cookie(req);if(id)sessions.delete(id);return send(res,200,{ok:true},{'set-cookie':'cz_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'})}
- if(p.startsWith('/api/admin')){if(!auth(req))return send(res,401,{error:'Sign in required.'});if(p==='/api/admin'&&req.method==='GET')return send(res,200,read());if(p==='/api/admin'&&req.method==='PUT'){let d=await body(req);if(!d||!Array.isArray(d.products)||!d.settings)return send(res,400,{error:'Invalid store data.'});d.orders=read().orders;write(d);
-     try{
-         await Product.deleteMany({});
-         if(d.products.length>0){
-             await Product.insertMany(d.products.map(prod=> {
-                 const resolvedImage = prod.imageUrl || prod.image || prod.img || prod.photo || prod.picture || prod.url || 'https://images.unsplash.com/photo-1523275335684-37898b6baf30';
-                 return {
-                     name: prod.name,
-                     price: Number(prod.price) || 0,
-                     description: prod.description || '',
-                     imageUrl: resolvedImage,
-                     image: resolvedImage,
-                     model: prod.model || '',
-                     stock: Number(prod.stock) || 0,
-                     published: prod.published !== false
-                 };
-             }));
-         }
-     }catch(err){console.error('Failed to sync products to MongoDB:',err)}
-     return send(res,200,{ok:true})}
+ if(p.startsWith('/api/admin')){if(!auth(req))return send(res,401,{error:'Sign in required.'});if(p==='/api/admin'&&req.method==='GET')return send(res,200,read());if(p==='/api/admin'&&req.method==='PUT'){let d=await body(req);if(!d||!Array.isArray(d.products)||!d.settings)return send(res,400,{error:'Invalid store data.'});d.orders=read().orders;write(d);return send(res,200,{ok:true})}
    const orderMatch=p.match(/^\/api\/admin\/orders\/([^/]+)$/);if(orderMatch&&req.method==='PATCH'){const b=await body(req),d=read(),order=d.orders.find(x=>x.id===orderMatch[1]);if(!order)return send(res,404,{error:'Order not found.'});const next=String(b.status||''),allowed={Pending:['Confirmed','Cancelled'],Confirmed:['Preparing','Cancelled'],Preparing:['Shipped','Cancelled'],Shipped:['Delivered'],Delivered:[],Cancelled:[]};if(next&&!allowed[order.status]?.includes(next))return send(res,400,{error:'That order status change is not allowed.'});if(next==='Confirmed'){for(const line of order.items){const item=d.products.find(x=>x.id===line.productId);if(!item||item.stock<line.quantity)return send(res,409,{error:`Not enough stock for ${line.name}. Update inventory before confirming.`})}for(const line of order.items)d.products.find(x=>x.id===line.productId).stock-=line.quantity;order.inventoryReserved=true;}if(next==='Cancelled'&&order.inventoryReserved){for(const line of order.items){const item=d.products.find(x=>x.id===line.productId);if(item)item.stock+=line.quantity}order.inventoryReserved=false;}if(next)order.status=next;if(typeof b.notes==='string')order.adminNotes=b.notes.slice(0,2000);write(d);return send(res,200,{ok:true})}return send(res,404,{error:'Not found'})}
  if(p==='/admin'||p==='/admin/')return staticFile('/admin.html',res);
  if(req.method==='GET'&&(!p.startsWith('/api/')))return staticFile(p,res);
