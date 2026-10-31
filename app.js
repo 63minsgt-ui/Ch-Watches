@@ -83,8 +83,20 @@ function renderProducts() {
     </article>`).join('');
   $('#empty').classList.toggle('hidden', products.length > 0);
   $('#loadMore').classList.toggle('hidden', products.length <= limit);
-  $$('.product-card').forEach((el) => { el.onclick = (e) => { if (!e.target.closest('[data-add]')) openProduct(el.dataset.id); }; });
-  $$('[data-add]').forEach((button) => { button.onclick = (e) => { e.stopPropagation(); add(button.dataset.add); }; });
+
+  // Re-attach card click to open details
+  $$('.product-card').forEach((el) => { 
+    el.onclick = (e) => { 
+      if (!e.target.closest('[data-add]')) openProduct(el.dataset.id); 
+    }; 
+  });
+  // Re-attach quick add buttons
+  $$('[data-add]').forEach((button) => { 
+    button.onclick = (e) => { 
+      e.stopPropagation(); 
+      add(button.dataset.add); 
+    }; 
+  });
 }
 
 function openProduct(id, updateUrl = true) {
@@ -95,40 +107,58 @@ function openProduct(id, updateUrl = true) {
   const allImages = getAllProductImages(product);
   const thumbnails = allImages.length > 1 ? `<div class="detail-thumbnails">${allImages.map((src, i) => `<button type="button" data-thumb="${i}" aria-label="View image ${i + 1}"><img src="${esc(src)}" alt=""></button>`).join('')}</div>` : '';
   $('#productDetail').innerHTML = `<div class="product-detail"><div><div class="detail-image">${image(product)}</div>${thumbnails}</div><div class="detail-copy">
-    <p class="eyebrow">${esc(product.brand || 'WATCH')} ${product.model ? `- ${esc(product.model)}` : ''}</p><h2>${esc(product.name)}</h2><b class="price">${money(p.price)}${product.previousPrice && product.previousPrice > product.price ? ` <s class="old-price">${money(product.previousPrice)}</s>` : ''}</b>
+    <p class="eyebrow">${esc(product.brand || 'WATCH')} ${product.model ? `- ${esc(product.model)}` : ''}</p><h2>${esc(product.name)}</h2><b class="price">${money(product.price)}${product.previousPrice && product.previousPrice > product.price ? ` <s class="old-price">${money(product.previousPrice)}</s>` : ''}</b>
     <p>${esc(product.description || 'Contact us to confirm product details and availability.')}</p>
     <p>${product.stock > 0 ? `${product.stock} available in stock` : 'Currently unavailable'}${product.colors?.length ? ` - ${esc(product.colors.join(', '))}` : ''}</p>
     <dl>${Object.entries(specs).filter(([, v]) => v).map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
     <label>Color / variant <select id="detailColor">${product.colors?.length ? product.colors.map((color) => `<option value="${esc(color)}">${esc(color)}</option>`).join('') : '<option value="">Not specified</option>'}</select></label>
-    <label>Quantity <select id="detailQty">${Array.from({ length: Math.min(20, product.stock) }, (_, i) => `<option>${i + 1}</option>`).join('')}</select></label>
+    <label>Quantity <select id="detailQty">${Array.from({ length: Math.min(20, Math.max(1, product.stock)) }, (_, i) => `<option>${i + 1}</option>`).join('')}</select></label>
     <div class="detail-actions"><button class="button button-dark" id="detailAdd" ${product.stock <= 0 ? 'disabled' : ''}>Add to cart</button><button class="button button-outline" id="detailWa" ${product.stock <= 0 ? 'disabled' : ''}>Order on WhatsApp</button></div>
     </div></div>`;
   $('#productModal').classList.remove('hidden');
   $('#overlay').classList.remove('hidden');
+  
+  // Attach modal action listeners
   $('#detailAdd')?.addEventListener('click', () => { add(id, Number($('#detailQty').value), $('#detailColor').value); closeModals(); });
   $('#detailWa')?.addEventListener('click', () => goWhatsApp(productMessage(product, Number($('#detailQty').value), $('#detailColor').value)));
-  $$('[data-thumb]').forEach((button) => { button.onclick = () => { const imgEl = $('.detail-image img'); if (imgEl) imgEl.src = allImages[Number(button.dataset.thumb)] || ''; }; });
+  
+  $$('[data-thumb]').forEach((button) => { 
+    button.onclick = () => { 
+      const imgEl = $('.detail-image img'); 
+      if (imgEl) imgEl.src = allImages[Number(button.dataset.thumb)] || ''; 
+    }; 
+  });
   const img = $('.detail-image img');
   if (img) img.onclick = () => img.classList.toggle('zoomed');
 }
 
 function add(id, quantity = 1, color) {
   const product = db.products.find((p) => p.id === id);
-  if (!product || product.stock <= 0) return;
+  if (!product) return;
   if (color === undefined) color = product.colors?.[0] || '';
   const row = cart.find((x) => x.id === id && (x.color || '') === color);
-  if (row) row.qty = Math.min(product.stock, row.qty + quantity);
-  else cart.push({ id, color, qty: Math.min(product.stock, quantity) });
-  save(); renderCart();
+  const currentQty = row ? row.qty : 0;
+  const maxStock = product.stock > 0 ? product.stock : 99; // Fallback if stock wasn't set
+  
+  if (row) {
+    row.qty = Math.min(maxStock, currentQty + quantity);
+  } else {
+    cart.push({ id, color, qty: Math.min(maxStock, quantity) });
+  }
+  save(); 
+  renderCart();
+  toggleCart(true); // Automatically open cart drawer so user sees their item added
 }
+
 function changeQty(id, delta, color = '') {
   const row = cart.find((x) => x.id === id && (x.color || '') === color);
   const product = db.products.find((p) => p.id === id);
   if (!row || !product) return;
-  row.qty = Math.min(product.stock, row.qty + delta);
-  if (row.qty <= 0) cart = cart.filter((x) => x !== row);
-  save(); renderCart();
+  row.qty = Math.max(1, row.qty + delta);
+  save(); 
+  renderCart();
 }
+
 function renderCart() {
   let subtotal = 0;
   const count = cart.reduce((sum, row) => sum + row.qty, 0);
@@ -145,9 +175,19 @@ function renderCart() {
   }).join('') || '<p class="muted">Your cart is waiting for a good watch.</p>';
   $('#subtotal').textContent = money(subtotal);
   updateCheckoutTotal();
-  $$('[data-qty]').forEach((b) => { b.onclick = () => changeQty(b.dataset.qty, Number(b.dataset.delta), b.dataset.color); });
-  $$('[data-remove]').forEach((b) => { b.onclick = () => { const row = cart.find((x) => x.id === b.dataset.remove && (x.color || '') === b.dataset.color); cart = cart.filter((x) => x !== row); save(); renderCart(); }; });
+
+  $$('[data-qty]').forEach((b) => { 
+    b.onclick = () => changeQty(b.dataset.qty, Number(b.dataset.delta), b.dataset.color); 
+  });
+  $$('[data-remove]').forEach((b) => { 
+    b.onclick = () => { 
+      cart = cart.filter((x) => !(x.id === b.dataset.remove && (x.color || '') === b.dataset.color)); 
+      save(); 
+      renderCart(); 
+    }; 
+  });
 }
+
 function productMessage(p, quantity = 1, color = '') {
   const url = `${location.href.split('#')[0]}#product-${encodeURIComponent(p.id)}`;
   return `Hello ${db.settings.name}! I would like to order the following watch:\n\nProduct: ${p.name}\nModel: ${p.model || 'Not listed'}\nPrice: ${money(p.price)}\nColor: ${color || 'Please advise'}\nQuantity: ${quantity}\nProduct Link: ${url}\n\nPlease confirm availability and delivery details.`;
