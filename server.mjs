@@ -35,8 +35,16 @@ if(!database.prepare('SELECT key FROM settings WHERE key=?').get('store'))write(
 const sessions=new Map(), attempts=new Map(), orderAttempts=new Map();
 function read(){const setting=database.prepare('SELECT value FROM settings WHERE key=?').get('store');return {settings:setting?JSON.parse(setting.value):structuredClone(seed.settings),products:database.prepare('SELECT data FROM products ORDER BY rowid').all().map(x=>JSON.parse(x.data)),orders:database.prepare('SELECT data FROM orders ORDER BY rowid').all().map(x=>JSON.parse(x.data))}}
 function write(d){database.exec('BEGIN IMMEDIATE');try{database.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run('store',JSON.stringify(d.settings));database.exec('DELETE FROM products; DELETE FROM orders;');const addProduct=database.prepare('INSERT INTO products(id,data) VALUES(?,?)'),addOrder=database.prepare('INSERT INTO orders(id,data) VALUES(?,?)');for(const x of d.products)addProduct.run(String(x.id),JSON.stringify(x));for(const x of d.orders)addOrder.run(String(x.id),JSON.stringify(x));database.exec('COMMIT')}catch(error){database.exec('ROLLBACK');throw error}}
-function send(res, status, obj, headers = {}) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff','content-security-policy': "default-src 'self'; img-src 'self' data: blob: https://images.unsplash.com;",...headers});res.end(JSON.stringify(obj))}
-function cookie(req){let m=(req.headers.cookie||'').match(/(?:^|;\s*)cz_session=([a-f0-9]+)/);return m?.[1]}
+function send(res, status, obj, headers={}) {
+    res.writeHead(status, { 
+        'content-type': 'application/json', 
+        'cache-control': 'no-store', 
+        'x-content-type-options': 'nosniff',
+        'content-security-policy': "default-src 'self'; img-src 'self' data: blob: https://images.unsplash.com;",
+        ...headers 
+    });
+    res.end(JSON.stringify(obj));
+}
 function auth(req){let id=cookie(req),expiry=id&&sessions.get(id);if(expiry&&expiry>Date.now())return id;if(id)sessions.delete(id);return null}
 async function body(req){let chunks=[],size=0;for await(const c of req){size+=c.length;if(size>32_000_000)throw Error('Request too large');chunks.push(c)}return JSON.parse(Buffer.concat(chunks).toString()||'{}')}
 function staticFile(pathname,res){const requested=pathname==='/'?'index.html':decodeURIComponent(pathname).replace(/^\/+/,''),allowed=new Set(['index.html','styles.css','app.js','admin.html','admin.js','ch-time-logo.jpg']);if(!allowed.has(requested)){res.writeHead(404);return res.end('Not found')}const file=path.join(root,requested);if(!fs.existsSync(file)||!fs.statSync(file).isFile()){res.writeHead(404);return res.end('Not found')}let ext=path.extname(file),types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.jpg':'image/jpeg'};res.writeHead(200,{'content-type':types[ext]||'application/octet-stream','x-content-type-options':'nosniff','content-security-policy':"default-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'unsafe-inline'; connect-src 'self'; base-uri 'self'; frame-ancestors 'none'"});fs.createReadStream(file).pipe(res)}
